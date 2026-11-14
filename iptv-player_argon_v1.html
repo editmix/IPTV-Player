@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>IPTV-ORG Mobile Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    :root {
+      --bg-primary: #0f1117;
+      --bg-secondary: #181b24;
+      --bg-tertiary: #232734;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-active: #10b981;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border: #2e3344;
+      --danger: #ef4444;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+      user-select: none;
+    }
+
+    /* 16:9 Responsive Video Player Container */
+    .player-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      max-height: 40dvh;
+      background-color: #000;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    /* Loading & Status Overlay */
+    .player-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 16px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .player-overlay.hidden {
+      opacity: 0;
+    }
+
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .overlay-text {
+      font-size: 0.9rem;
+      color: var(--text-main);
+      max-width: 85%;
+      line-height: 1.4;
+    }
+
+    /* Now Playing & Action Bar */
+    .now-playing-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 54px;
+    }
+
+    .np-info {
+      display: flex;
+       flex-direction: column;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .np-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .np-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .np-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s;
+      color: #fff;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .btn-load {
+      background-color: var(--accent);
+    }
+
+    .btn-load:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-play {
+      background-color: var(--accent-active);
+      display: none;
+    }
+
+    .btn-play.visible {
+      display: inline-flex;
+    }
+
+    /* Controls: Search + Category Chips */
+    .controls-area {
+      background-color: var(--bg-secondary);
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .search-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-input {
+      width: 100%;
+      background-color: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 34px 9px 12px;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .search-clear {
+      position: absolute;
+      right: 8px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px;
+      display: none;
+    }
+
+    .search-clear.visible {
+      display: block;
+    }
+
+    /* Horizontal Category Chips */
+    .chips-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding-bottom: 2px;
+    }
+
+    .chips-scroll::-webkit-scrollbar {
+      display: none;
+    }
+
+    .chip {
+      background-color: var(--bg-tertiary);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 13px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+
+    .chip.active {
+      background-color: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* Meta bar showing counts */
+    .list-meta {
+      padding: 6px 14px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background-color: var(--bg-primary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    /* Channel List */
+    .channel-list {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .channel-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border-radius: 10px;
+      background-color: var(--bg-secondary);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+
+    .channel-item:hover {
+      background-color: var(--bg-tertiary);
+    }
+
+    .channel-item.selected {
+      border-color: var(--accent);
+      background-color: rgba(59, 130, 246, 0.12);
+    }
+
+    .channel-item.playing {
+      border-color: var(--accent-active);
+      background-color: rgba(16, 185, 129, 0.12);
+    }
+
+    .channel-logo-box {
+      width: 46px;
+      height: 46px;
+      border-radius: 8px;
+      background-color: var(--bg-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .channel-logo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 4px;
+    }
+
+    .channel-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .channel-name {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+
+    .channel-cat {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .channel-badge {
+      font-size: 0.7rem;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .channel-item.playing .channel-badge {
+      background: var(--accent-active);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      padding: 32px 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top 16:9 Video Player -->
+  <div class="player-wrapper">
+    <video id="videoPlayer" controls playsinline></video>
+    <div id="playerOverlay" class="player-overlay">
+      <div id="overlaySpinner" class="spinner" style="display: none;"></div>
+      <div id="overlayText" class="overlay-text">Tap "Load List" to fetch the IPTV-ORG master playlist</div>
+    </div>
+  </div>
+
+  <!-- Now Playing & Action Bar -->
+  <div class="now-playing-bar">
+    <div class="np-info">
+      <span id="npStatusLabel" class="np-label">Ready</span>
+      <div id="npTitle" class="np-title">No channel selected</div>
+    </div>
+    <div class="np-actions">
+      <button id="playBtn" class="btn btn-play" type="button" title="Play selected channel">
+        &#9654; Play
+      </button>
+      <button id="loadListBtn" class="btn btn-load" type="button">
+        Load List
+      </button>
+    </div>
+  </div>
+
+  <!-- Search & Category Filter Controls -->
+  <div class="controls-area">
+    <div class="search-row">
+      <input
+        id="searchInput"
+        class="search-input"
+        type="search"
+        placeholder="Search channel name or category..."
+        autocomplete="off"
+        disabled
+      />
+      <button id="clearSearchBtn" class="search-clear" type="button" aria-label="Clear search">&times;</button>
+    </div>
+    <div id="categoryChips" class="chips-scroll">
+      <button class="chip active" data-category="All" type="button">All</button>
+    </div>
+  </div>
+
+  <!-- Status Count Bar -->
+  <div class="list-meta">
+    <span id="channelCountText">0 channels loaded</span>
+    <span>Tap to select &bull; Double-tap to play</span>
+  </div>
+
+  <!-- Channel Results List -->
+  <div id="channelList" class="channel-list">
+    <div class="empty-state">
+      Tap <strong>Load List</strong> above to download and parse the official IPTV-ORG playlist (~11,500+ channels).
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const PLAYLIST_URL = 'https://iptv-org.github.io/iptv/index.m3u';
+      const MAX_RENDER_LIMIT = 120;
+
+      // DOM Elements
+      const videoPlayer = document.getElementById('videoPlayer');
+      const playerOverlay = document.getElementById('playerOverlay');
+      const overlaySpinner = document.getElementById('overlaySpinner');
+      const overlayText = document.getElementById('overlayText');
+      const npStatusLabel = document.getElementById('npStatusLabel');
+      const npTitle = document.getElementById('npTitle');
+      const playBtn = document.getElementById('playBtn');
+      const loadListBtn = document.getElementById('loadListBtn');
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      const categoryChips = document.getElementById('categoryChips');
+      const channelCountText = document.getElementById('channelCountText');
+      const channelList = document.getElementById('channelList');
+
+      // Application State
+      let allChannels = [];
+      let categories = ['All'];
+      let activeCategory = 'All';
+      let searchQuery = '';
+      let selectedChannel = null;
+      let playingChannel = null;
+      let hlsInstance = null;
+      let lastTapTime = 0;
+      let lastTappedId = null;
+
+      // Helper: Show/Hide Video Overlay
+      function setOverlay(visible, text = '', loading = false) {
+        if (visible) {
+          playerOverlay.classList.remove('hidden');
+          overlayText.textContent = text;
+          overlaySpinner.style.display = loading ? 'block' : 'none';
+        } else {
+          playerOverlay.classList.add('hidden');
+        }
+      }
+
+      // Parse M3U Playlist text into structured channel objects
+      function parseM3U(m3uText) {
+        const lines = m3uText.split(/\r?\n/);
+        const parsedChannels = [];
+        const categorySet = new Set();
+
+        let currentInfo = null;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          if (line.startsWith('#EXTINF:')) {
+            // Extract logo
+            const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+            const logo = logoMatch ? logoMatch[1].trim() : '';
+
+            // Extract group-title (can be semicolon or comma separated)
+            const groupMatch = line.match(/group-title="([^"]*)"/i);
+            const rawGroup = groupMatch && groupMatch[1].trim() ? groupMatch[1].trim() : 'Uncategorized';
+            const groupList = rawGroup.split(';').map(s => s.trim()).filter(Boolean);
+            const primaryGroup = groupList.length > 0 ? groupList.join(', ') : 'Uncategorized';
+
+            groupList.forEach(g => categorySet.add(g));
+            if (groupList.length === 0) categorySet.add('Uncategorized');
+
+            // Extract channel display name after the last comma
+            const commaIndex = line.lastIndexOf(',');
+            const name = commaIndex !== -1 ? line.slice(commaIndex + 1).trim() : 'Unknown Channel';
+
+            currentInfo = {
+              name: name || 'Unknown Channel',
+              logo,
+              category: primaryGroup,
+              categories: groupList.length ? groupList : ['Uncategorized'],
+              searchStr: `${name} ${primaryGroup}`.toLowerCase()
+            };
+          } else if (!line.startsWith('#') && currentInfo) {
+            currentInfo.url = line;
+            currentInfo.id = parsedChannels.length;
+            parsedChannels.push(currentInfo);
+            currentInfo = null;
+          }
+        }
+
+        const sortedCategories = ['All', ...Array.from(categorySet).sort((a, b) => a.localeCompare(b))];
+        return { channels: parsedChannels, categories: sortedCategories };
+      }
+
+      // Fetch and parse master playlist
+      async function loadMasterPlaylist() {
+        loadListBtn.disabled = true;
+        loadListBtn.textContent = 'Loading...';
+        setOverlay(true, 'Downloading master playlist (~11,500 channels)...', true);
+        channelList.innerHTML = '<div class="empty-state">Fetching and parsing playlist from IPTV-ORG...</div>';
+
+        try {
+          const response = await fetch(PLAYLIST_URL);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} - Failed to fetch playlist`);
+          }
+          const m3uText = await response.text();
+
+          setOverlay(true, 'Parsing channels and categories...', true);
+
+          // Allow UI thread to paint status message before parsing
+          await new Promise(r => setTimeout(r, 30));
+
+          const parsed = parseM3U(m3uText);
+          allChannels = parsed.channels;
+          categories = parsed.categories;
+
+          activeCategory = 'All';
+          searchInput.disabled = false;
+          renderCategoryChips();
+          renderChannelList();
+
+          setOverlay(true, `Loaded ${allChannels.length.toLocaleString()} channels. Select a channel to play.`, false);
+          loadListBtn.textContent = 'Reload List';
+        } catch (err) {
+          console.error(err);
+          setOverlay(true, `Error loading playlist: ${err.message}`, false);
+          channelList.innerHTML = `<div class="empty-state">Failed to load playlist.<br>${err.message}</div>`;
+          loadListBtn.textContent = 'Retry Load';
+        } finally {
+          loadListBtn.disabled = false;
+        }
+      }
+
+      // Render horizontal category chips
+      function renderCategoryChips() {
+        const fragment = document.createDocumentFragment();
+        categories.forEach(cat => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `chip${cat === activeCategory ? ' active' : ''}`;
+          btn.dataset.category = cat;
+          btn.textContent = cat;
+          fragment.appendChild(btn);
+        });
+        categoryChips.innerHTML = '';
+        categoryChips.appendChild(fragment);
+      }
+
+      // Filter and render up to 120 channels
+      function renderChannelList() {
+        const q = searchQuery.trim().toLowerCase();
+
+        const filtered = [];
+        let totalMatched = 0;
+
+        for (let i = 0; i < allChannels.length; i++) {
+          const ch = allChannels[i];
+          const matchesCat = activeCategory === 'All' || ch.categories.includes(activeCategory);
+          if (!matchesCat) continue;
+
+          const matchesSearch = !q || ch.searchStr.includes(q);
+          if (!matchesSearch) continue;
+
+          totalMatched++;
+          if (filtered.length < MAX_RENDER_LIMIT) {
+            filtered.push(ch);
+          }
+        }
+
+        if (totalMatched > MAX_RENDER_LIMIT) {
+          channelCountText.textContent = `Showing ${filtered.length} of ${totalMatched.toLocaleString()} matching channels`;
+        } else {
+          channelCountText.textContent = `Showing ${filtered.length.toLocaleString()} matching channels`;
+        }
+
+        if (filtered.length === 0) {
+          channelList.innerHTML = '<div class="empty-state">No channels match your search or category filter.</div>';
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        filtered.forEach(ch => {
+          const item = document.createElement('div');
+          const isSelected = selectedChannel && selectedChannel.id === ch.id;
+          const isPlaying = playingChannel && playingChannel.id === ch.id;
+
+          item.className = `channel-item${isSelected ? ' selected' : ''}${isPlaying ? ' playing' : ''}`;
+          item.dataset.id = ch.id;
+
+          // Logo or fallback initials
+          const logoBox = document.createElement('div');
+          logoBox.className = 'channel-logo-box';
+          const initials = ch.name.slice(0, 2).toUpperCase();
+
+          if (ch.logo) {
+            const img = document.createElement('img');
+            img.className = 'channel-logo';
+            img.src = ch.logo;
+            img.alt = ch.name;
+            img.loading = 'lazy';
+            img.onerror = () => {
+              img.remove();
+              logoBox.textContent = initials;
+            };
+            logoBox.appendChild(img);
+          } else {
+            logoBox.textContent = initials;
+          }
+
+          // Channel Name + Category
+          const details = document.createElement('div');
+          details.className = 'channel-details';
+
+          const nameEl = document.createElement('div');
+          nameEl.className = 'channel-name';
+          nameEl.textContent = ch.name;
+
+          const catEl = document.createElement('div');
+          catEl.className = 'channel-cat';
+          catEl.textContent = ch.category;
+
+          details.appendChild(nameEl);
+          details.appendChild(catEl);
+
+          // Status badge
+          const badge = document.createElement('div');
+          badge.className = 'channel-badge';
+          badge.textContent = isPlaying ? 'LIVE' : (isSelected ? 'Selected' : 'Select');
+
+          item.appendChild(logoBox);
+          item.appendChild(details);
+          item.appendChild(badge);
+          fragment.appendChild(item);
+        });
+
+        channelList.innerHTML = '';
+        channelList.appendChild(fragment);
+      }
+
+      // Select a channel (single tap)
+      function selectChannel(channel) {
+        selectedChannel = channel;
+        playBtn.classList.add('visible');
+
+        if (!playingChannel || playingChannel.id !== channel.id) {
+          npStatusLabel.textContent = 'Selected (Tap Play)';
+          npTitle.textContent = `${channel.name} (${channel.category})`;
+        }
+
+        // Update item classes without full DOM rebuild
+        const items = channelList.querySelectorAll('.channel-item');
+        items.forEach(el => {
+          const itemId = Number(el.dataset.id);
+          const badge = el.querySelector('.channel-badge');
+          const isSel = itemId === channel.id;
+          const isPlay = playingChannel && itemId === playingChannel.id;
+
+          el.classList.toggle('selected', isSel);
+          if (badge) {
+            badge.textContent = isPlay ? 'LIVE' : (isSel ? 'Selected' : 'Select');
+          }
+        });
+      }
+
+      // Play a channel using hls.js or native HLS fallback
+      function playChannel(channel) {
+        if (!channel) return;
+        selectedChannel = channel;
+        playingChannel = channel;
+        playBtn.classList.add('visible');
+
+        npStatusLabel.textContent = 'Now Playing';
+        npTitle.textContent = `${channel.name} (${channel.category})`;
+        setOverlay(true, `Connecting to ${channel.name}...`, true);
+
+        // Update visual state in list
+        const items = channelList.querySelectorAll('.channel-item');
+        items.forEach(el => {
+          const itemId = Number(el.dataset.id);
+          const badge = el.querySelector('.channel-badge');
+          const isSel = itemId === channel.id;
+          const isPlay = itemId === channel.id;
+
+          el.classList.toggle('selected', isSel);
+          el.classList.toggle('playing', isPlay);
+          if (badge) {
+            badge.textContent = isPlay ? 'LIVE' : 'Select';
+          }
+        });
+
+        // Clean up any existing HLS instance
+        if (hlsInstance) {
+          hlsInstance.destroy();
+          hlsInstance = null;
+        }
+
+        videoPlayer.pause();
+        videoPlayer.removeAttribute('src');
+        videoPlayer.load();
+
+        const streamUrl = channel.url;
+
+        if (window.Hls && Hls.isSupported()) {
+          hlsInstance = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true
+          });
+
+          hlsInstance.loadSource(streamUrl);
+          hlsInstance.attachMedia(videoPlayer);
+
+          hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+            videoPlayer.play().catch(() => {
+              setOverlay(false);
+            });
+          });
+
+          hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  setOverlay(true, `Stream offline or blocked (CORS/Geo): ${channel.name}`, false);
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  hlsInstance.recoverMediaError();
+                  break;
+                default:
+                  hlsInstance.destroy();
+                  setOverlay(true, `Playback error on ${channel.name}`, false);
+                  break;
+              }
+            }
+          });
+        } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+          // Native HLS support (iOS / Safari)
+          videoPlayer.src = streamUrl;
+          videoPlayer.addEventListener('loadedmetadata', () => {
+            videoPlayer.play().catch(() => {
+              setOverlay(false);
+            });
+          }, { once: true });
+        } else {
+          setOverlay(true, 'HLS playback is not supported in this browser.', false);
+        }
+      }
+
+      // Video Player Events
+      videoPlayer.addEventListener('playing', () => {
+        setOverlay(false);
+      });
+
+      videoPlayer.addEventListener('waiting', () => {
+        if (playingChannel) {
+          setOverlay(true, `Buffering ${playingChannel.name}...`, true);
+        }
+      });
+
+      videoPlayer.addEventListener('error', () => {
+        if (!hlsInstance && playingChannel) {
+          setOverlay(true, `Unable to play ${playingChannel.name} (Stream offline or restricted).`, false);
+        }
+      });
+
+      // UI Event Listeners
+      loadListBtn.addEventListener('click', loadMasterPlaylist);
+
+      playBtn.addEventListener('click', () => {
+        if (selectedChannel) {
+          playChannel(selectedChannel);
+        }
+      });
+
+      // Real-time search input
+      searchInput.addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        clearSearchBtn.classList.toggle('visible', searchQuery.length > 0);
+        channelList.scrollTop = 0;
+        renderChannelList();
+      });
+
+      clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        clearSearchBtn.classList.remove('visible');
+        channelList.scrollTop = 0;
+        renderChannelList();
+        searchInput.focus();
+      });
+
+      // Category chip selection
+      categoryChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('.chip');
+        if (!chip) return;
+
+        activeCategory = chip.dataset.category;
+        categoryChips.querySelectorAll('.chip').forEach(c => {
+          c.classList.toggle('active', c.dataset.category === activeCategory);
+        });
+
+        channelList.scrollTop = 0;
+        renderChannelList();
+      });
+
+      // Channel tap (select) and double-tap / double-click (play)
+      channelList.addEventListener('click', (e) => {
+        const item = e.target.closest('.channel-item');
+        if (!item) return;
+
+        const id = Number(item.dataset.id);
+        const channel = allChannels[id];
+        if (!channel) return;
+
+        const now = Date.now();
+        const isDoubleTap = (lastTappedId === id) && (now - lastTapTime < 350);
+
+        lastTappedId = id;
+        lastTapTime = now;
+
+        if (isDoubleTap) {
+          playChannel(channel);
+        } else {
+          selectChannel(channel);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
